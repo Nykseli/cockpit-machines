@@ -18,8 +18,16 @@
 # along with Cockpit; If not, see <http://www.gnu.org/licenses/>.
 
 import testlib
+import os
 from machineslib import VirtualMachinesCase
 
+
+def provision_memory_mb():
+    # tumbleweed needs oodles of ram when using the TCG backend on qemu
+    if "TEST_OS" in os.environ and "suse" in os.environ["TEST_OS"]:
+        return 880
+
+    return 660
 
 class TestMultiMachineVNC(VirtualMachinesCase):
     """
@@ -32,8 +40,8 @@ class TestMultiMachineVNC(VirtualMachinesCase):
     """
 
     provision = {  # noqa: RUF012
-        "machine1": {"address": "10.111.113.1/20", "memory_mb": 660},
-        "machine2": {"address": "10.111.113.2/20", "memory_mb": 660},
+        "machine1": {"address": "10.111.113.1/20", "memory_mb": provision_memory_mb()},
+        "machine2": {"address": "10.111.113.2/20", "memory_mb": provision_memory_mb()},
     }
 
     def setUp(self):
@@ -48,6 +56,10 @@ class TestMultiMachineVNC(VirtualMachinesCase):
         m = self.machine
         m2 = self.machine2
         m2_host = "10.111.113.2"
+
+        user = None
+        if "suse" in m.image:
+            user = "root"
 
         m.execute(f"ssh-keyscan {m2_host} > /etc/ssh/ssh_known_hosts")
         self.startLibvirt(m2)
@@ -72,7 +84,7 @@ class TestMultiMachineVNC(VirtualMachinesCase):
 
         b.wait_js_cond(f'window.location.pathname == "/@{m2_host}/system"')
         b.enter_page("/system", host=m2_host)
-        b.become_superuser()
+        b.become_superuser(user=user)
 
         b.go(f"/@{m2_host}/machines")
         b.enter_page("/machines", host=m2_host)
