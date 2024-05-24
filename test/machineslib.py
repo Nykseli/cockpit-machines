@@ -348,41 +348,44 @@ class VirtualMachinesCase(testlib.MachineCase, VirtualMachinesCaseHelpers, stora
     def setUp(self):
         super().setUp()
 
+        for m in self.machines:
+            m = self.machines[m]
+
+            # We don't want nested KVM since it doesn't work well enough
+            # three levels deep.
+            #
+            # The first level is the VM allocated to us that runs our
+            # "tasks" container in certain environments, the second level
+            # is the VM started by testlib.py to run a given test, and the
+            # third level are the VMS started by the test itself.  In most
+            # environments, the "tasks" container runs on bare metal, and
+            # the VMs started here are on level 2.
+            #
+            # Using KVM on level 3 is significantly slower than software
+            # emulation, by something like a factor of 2 at least, and
+            # much worse on a machine with many VMs to the point that the
+            # kernel will trigger its NMI watchdog and the boot never
+            # finishes. So we switch it off by removing "/dev/kvm".
+            #
+            # Our environments where the VMs started by the tests are on
+            # level 2 don't have support for nested KVM. So "/dev/kvm"
+            # does not exist in the first place and we don't need to be
+            # careful to leave it in place.
+            #
+            m.execute("rm -f /dev/kvm")
+
+            # Keep pristine state of libvirt
+            self.restore_dir("/var/lib/libvirt")
+            self.restore_dir("/etc/libvirt")
+            self.restore_dir("/home/admin/.local/share/libvirt/")
+
+            self.startLibvirt(m)
+
+            self.addCleanup(m.execute, f"systemctl stop {self.getLibvirtServiceName()}")
+            if not hasMonolithicDaemon(m.image):
+                self.addCleanup(m.execute, "systemctl stop virtstoraged.service virtnetworkd.service")
+
         m = self.machine
-
-        # We don't want nested KVM since it doesn't work well enough
-        # three levels deep.
-        #
-        # The first level is the VM allocated to us that runs our
-        # "tasks" container in certain environments, the second level
-        # is the VM started by testlib.py to run a given test, and the
-        # third level are the VMS started by the test itself.  In most
-        # environments, the "tasks" container runs on bare metal, and
-        # the VMs started here are on level 2.
-        #
-        # Using KVM on level 3 is significantly slower than software
-        # emulation, by something like a factor of 2 at least, and
-        # much worse on a machine with many VMs to the point that the
-        # kernel will trigger its NMI watchdog and the boot never
-        # finishes. So we switch it off by removing "/dev/kvm".
-        #
-        # Our environments where the VMs started by the tests are on
-        # level 2 don't have support for nested KVM. So "/dev/kvm"
-        # does not exist in the first place and we don't need to be
-        # careful to leave it in place.
-        #
-        m.execute("rm -f /dev/kvm")
-
-        # Keep pristine state of libvirt
-        self.restore_dir("/var/lib/libvirt")
-        self.restore_dir("/etc/libvirt")
-        self.restore_dir("/home/admin/.local/share/libvirt/")
-
-        self.startLibvirt(m)
-
-        self.addCleanup(m.execute, f"systemctl stop {self.getLibvirtServiceName()}")
-        if not hasMonolithicDaemon(m.image):
-            self.addCleanup(m.execute, "systemctl stop virtstoraged.service virtnetworkd.service")
 
         def stop_all():
             # domains
