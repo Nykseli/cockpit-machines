@@ -7,6 +7,11 @@ if grep -q 'ID=debian' /usr/lib/os-release; then
     echo '* soft core unlimited' >> /etc/security/limits.conf
 fi
 
+# for opensuse images, allow dmesg to read /var/lib/libvirt/pxe-config
+if grep -q 'ID="opensuse' /usr/lib/os-release; then
+    sed -i -e 's/\/var\/lib\/libvirt\/dnsmasq\/\*         r,/\0\/var\/lib\/libvirt\/pxe-config\/ r,\/var\/lib\/libvirt\/pxe-config\/\*\* r,/' /etc/apparmor.d/usr.sbin.dnsmasq
+fi
+
 systemctl enable cockpit.socket
 
 # don't force https:// (self-signed cert)
